@@ -1,4 +1,3 @@
-import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { getSessionUser } from '@/lib/auth';
 import { signOutAction } from './(auth)/actions';
@@ -11,10 +10,9 @@ export default async function AdminGroupLayout({
 }: {
   children: React.ReactNode;
 }) {
-  // Don't gate the (auth) routes — Next picks the right layout per route group.
-  // This layout only wraps everything UNDER /admin that isn't in (auth).
+  // Allow auth routes to render without a session; protected pages call requireUser().
   const me = await getSessionUser();
-  if (!me) redirect('/admin/sign-in');
+  if (!me) return <>{children}</>;
 
   return (
     <div className="min-h-screen flex flex-col">

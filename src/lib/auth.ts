@@ -4,6 +4,7 @@
  */
 import 'server-only';
 import { cookies } from 'next/headers';
+import { redirect } from 'next/navigation';
 import { SignJWT, jwtVerify } from 'jose';
 import { getSupabaseServer } from '@/lib/supabase/server';
 import type { User } from '@/lib/types';
@@ -69,6 +70,6 @@ export async function getSessionUser(): Promise<User | null> {
 
 export async function requireUser(): Promise<User> {
   const u = await getSessionUser();
-  if (!u) throw new Error('UNAUTHENTICATED');
+  if (!u) redirect('/admin/sign-in');
   return u;
 }

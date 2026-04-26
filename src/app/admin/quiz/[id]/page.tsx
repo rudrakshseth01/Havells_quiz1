@@ -22,6 +22,10 @@ export default async function QuizEditPage({
     .maybeSingle();
   if (!quiz) notFound();
 
+  if ((quiz as Quiz).status === 'finished') {
+    redirect(`/admin/quiz/${params.id}/results`);
+  }
+
   if ((quiz as Quiz).status === 'live') {
     // If a session is already open, send the admin to the live console.
     const { data: session } = await supabase
@@ -40,10 +44,20 @@ export default async function QuizEditPage({
     .eq('quiz_id', params.id)
     .order('position');
 
+  const { data: latestSession } = await supabase
+    .from('game_sessions')
+    .select('room_code')
+    .eq('quiz_id', params.id)
+    .eq('owner_id', me.id)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
   return (
     <Editor
       quiz={quiz as Quiz}
       questions={(questions ?? []) as Question[]}
+      roomCode={latestSession?.room_code ?? null}
     />
   );
 }

@@ -1,8 +1,6 @@
-import Link from 'next/link';
 import { requireUser } from '@/lib/auth';
 import { getSupabaseServer } from '@/lib/supabase/server';
-import { Pill } from '@/components/ui/Pill';
-import { CreateQuizButton, QuizRowActions } from './_library-client';
+import { CreateQuizButton, QuizLibraryBoard } from './_library-client';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,6 +12,12 @@ interface QuizRow {
   scheduled_for: string | null;
   updated_at: string;
   question_count: number;
+}
+
+interface LibraryStats {
+  totalQuizzes: number;
+  draftCount: number;
+  totalQuestions: number;
 }
 
 async function fetchQuizzes(ownerId: string): Promise<QuizRow[]> {
@@ -40,30 +44,22 @@ async function fetchQuizzes(ownerId: string): Promise<QuizRow[]> {
   })) as QuizRow[];
 }
 
-function statusPill(status: QuizRow['status']) {
-  if (status === 'live') return <Pill text="Live" variant="success" />;
-  if (status === 'scheduled') return <Pill text="Scheduled" variant="info" />;
-  if (status === 'finished') return <Pill text="Finished" variant="neutral" />;
-  return <Pill text="Draft" variant="warn" />;
-}
-
 export default async function AdminHomePage() {
   const me = await requireUser();
   const quizzes = await fetchQuizzes(me.id);
+  const stats: LibraryStats = {
+    totalQuizzes: quizzes.length,
+    draftCount: quizzes.filter((q) => q.status === 'draft').length,
+    totalQuestions: quizzes.reduce((sum, q) => sum + q.question_count, 0),
+  };
 
   return (
     <main className="max-w-[1180px] mx-auto px-6 py-10">
       <div className="flex items-end justify-between mb-8 flex-wrap gap-4">
         <div>
-          <h1 className="font-display text-3xl font-bold tracking-tight">
-            Welcome back, {me.name.split(' ')[0]}
-          </h1>
+          <h1 className="font-display text-5xl font-bold tracking-tight">My quizzes</h1>
           <p className="text-dim mt-1.5 text-sm">
-            {quizzes.length === 0
-              ? 'You haven\u2019t created any quizzes yet. Spin one up to get started.'
-              : `You have ${quizzes.length} quiz${
-                  quizzes.length === 1 ? '' : 'zes'
-                } in your library.`}
+            Build a quiz, Draft it and launch a live room when you're ready.
           </p>
         </div>
         <CreateQuizButton />
@@ -81,41 +77,7 @@ export default async function AdminHomePage() {
           <CreateQuizButton />
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {quizzes.map((q) => (
-            <div
-              key={q.id}
-              className="border border-line rounded-2xl p-5 bg-white/[0.025] hover:bg-white/[0.04] transition relative"
-            >
-              <div className="flex items-start justify-between gap-3 mb-3">
-                <Link
-                  href={`/admin/quiz/${q.id}`}
-                  className="font-display text-lg font-bold leading-tight hover:underline"
-                >
-                  {q.title}
-                </Link>
-                {statusPill(q.status)}
-              </div>
-              {q.description && (
-                <p className="text-dim text-sm mb-4 line-clamp-2">
-                  {q.description}
-                </p>
-              )}
-              <div className="flex items-center justify-between text-[12px] text-dim">
-                <span>
-                  {q.question_count} question
-                  {q.question_count === 1 ? '' : 's'}
-                </span>
-                <span>
-                  {q.scheduled_for
-                    ? `Scheduled · ${new Date(q.scheduled_for).toLocaleDateString()}`
-                    : `Updated ${new Date(q.updated_at).toLocaleDateString()}`}
-                </span>
-              </div>
-              <QuizRowActions quizId={q.id} status={q.status} />
-            </div>
-          ))}
-        </div>
+        <QuizLibraryBoard quizzes={quizzes} stats={stats} />
       )}
     </main>
   );

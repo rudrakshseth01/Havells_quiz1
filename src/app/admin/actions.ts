@@ -44,8 +44,8 @@ export async function createQuizAction(): Promise<{ id: string }> {
   await supabase.from('questions').insert({
     quiz_id: data.id,
     position: 1,
-    text: 'Your first question',
-    options: ['Option A', 'Option B', 'Option C', 'Option D'],
+    text: '',
+    options: ['', '', '', ''],
     correct: 0,
     duration: 20,
   });
@@ -128,9 +128,35 @@ export interface QuizPatch {
 export async function updateQuizAction(id: string, patch: QuizPatch) {
   const me = await requireUser();
   const supabase = getSupabaseServer();
+
+  const { data: current } = await supabase
+    .from('quizzes')
+    .select('id, status')
+    .eq('id', id)
+    .eq('owner_id', me.id)
+    .maybeSingle();
+  if (!current) throw new Error('not_found');
+  if (current.status === 'finished') throw new Error('quiz_finished_readonly');
+
+  const nextTitle = patch.title?.trim();
+  if (typeof nextTitle === 'string' && nextTitle.length > 0) {
+    const { data: duplicate } = await supabase
+      .from('quizzes')
+      .select('id')
+      .eq('owner_id', me.id)
+      .neq('id', id)
+      .ilike('title', nextTitle)
+      .maybeSingle();
+    if (duplicate) throw new Error('duplicate_title');
+  }
+
   const { error } = await supabase
     .from('quizzes')
-    .update({ ...patch, updated_at: new Date().toISOString() })
+    .update({
+      ...patch,
+      ...(typeof nextTitle === 'string' ? { title: nextTitle } : {}),
+      updated_at: new Date().toISOString(),
+    })
     .eq('id', id)
     .eq('owner_id', me.id);
   if (error) throw new Error(error.message);
@@ -148,11 +174,12 @@ export async function saveQuestionsAction(
   // Verify ownership
   const { data: own } = await supabase
     .from('quizzes')
-    .select('id')
+    .select('id, status')
     .eq('id', quizId)
     .eq('owner_id', me.id)
     .maybeSingle();
   if (!own) throw new Error('not_owner');
+  if (own.status === 'finished') throw new Error('quiz_finished_readonly');
 
   // Replace strategy: delete all + reinsert. Simple, transactional enough for our scale.
   await supabase.from('questions').delete().eq('quiz_id', quizId);

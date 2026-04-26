@@ -176,7 +176,7 @@ export default async function ResultsPage({
                 className="border border-line rounded-2xl p-5 bg-white/[0.025]"
               >
                 <div className="text-[11px] font-bold tracking-[0.14em] text-dim uppercase mb-2">
-                  Q{i + 1} · {s.total > 0 ? Math.round((s.correct / s.total) * 100) : 0}% correct
+                  Q{i + 1} · {s.question.duration}s timer · {s.total > 0 ? Math.round((s.correct / s.total) * 100) : 0}% correct
                 </div>
                 <h3 className="font-display text-lg font-bold mb-4 leading-tight">
                   {s.question.text}

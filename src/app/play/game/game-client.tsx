@@ -155,12 +155,30 @@ export function GameClient({
   if (session.phase === 'leaderboard') {
     const all = [...otherPlayers, player].sort((a, b) => b.score - a.score);
     const myRank = all.findIndex((p) => p.id === player.id) + 1;
-    return <BetweenRoundsView player={player} rank={myRank} total={all.length} />;
+    return (
+      <LeaderboardView
+        me={player}
+        players={all}
+        rank={myRank}
+        total={all.length}
+        eyebrow="Live standings"
+        title="Leaderboard"
+      />
+    );
   }
   if (session.phase === 'final' || session.phase === 'closed') {
     const all = [...otherPlayers, player].sort((a, b) => b.score - a.score);
     const myRank = all.findIndex((p) => p.id === player.id) + 1;
-    return <FinalView player={player} rank={myRank} total={all.length} />;
+    return (
+      <LeaderboardView
+        me={player}
+        players={all}
+        rank={myRank}
+        total={all.length}
+        eyebrow="Final standings"
+        title="Leaderboard"
+      />
+    );
   }
   return <LobbyView player={player} quizTitle={quizTitle} otherCount={otherPlayers.length + 1} />;
 }
@@ -387,56 +405,114 @@ function RevealView({
   );
 }
 
-function BetweenRoundsView({
-  player,
+function LeaderboardView({
+  me,
+  players,
   rank,
   total,
+  eyebrow,
+  title,
 }: {
-  player: Player;
+  me: Player;
+  players: Player[];
   rank: number;
   total: number;
+  eyebrow: string;
+  title: string;
 }) {
-  return (
-    <div className="text-center py-6">
-      <Avatar id={player.avatar} size={72} />
-      <div className="text-[11px] font-bold tracking-[0.18em] text-dim uppercase mt-4 mb-1">
-        Standings
-      </div>
-      <h2 className="font-display text-4xl font-bold tracking-tight">
-        #{rank}
-        <span className="text-dim text-2xl"> / {total}</span>
-      </h2>
-      <div className="text-[#5BD0FF] font-mono text-2xl font-bold mt-3">
-        {player.score} pts
-      </div>
-      <p className="text-dim text-sm mt-6">Hang tight for the next question…</p>
-    </div>
-  );
-}
+  const podium = players.slice(0, 3);
+  const orderedPodium = [podium[1], podium[0], podium[2]].filter(Boolean) as Player[];
+  const rankById = new Map(players.map((p, i) => [p.id, i + 1]));
+  const rest = players.slice(3);
 
-function FinalView({
-  player,
-  rank,
-  total,
-}: {
-  player: Player;
-  rank: number;
-  total: number;
-}) {
-  const medal = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : '🎉';
   return (
-    <div className="text-center py-6">
-      <div className="text-7xl mb-4">{medal}</div>
-      <h1 className="font-display text-3xl font-bold mb-2 tracking-tight">
-        {rank === 1 ? 'You won!' : `#${rank} of ${total}`}
-      </h1>
-      <Avatar id={player.avatar} size={72} />
-      <div className="text-[#5BD0FF] font-mono text-3xl font-bold mt-4">
-        {player.score}
+    <div className="py-3">
+      <div className="text-center mb-4">
+        <div className="text-[11px] font-bold tracking-[0.18em] text-[#8D7DFF] uppercase">
+          {eyebrow}
+        </div>
+        <h2 className="font-display text-4xl font-bold tracking-tight mt-1">{title}</h2>
       </div>
-      <p className="text-dim text-sm mt-6">
-        Thanks for playing, {player.name}.
-      </p>
+
+      {orderedPodium.length > 0 && (
+        <div className="grid grid-cols-3 gap-2 items-end mb-4">
+          {orderedPodium.map((p) => {
+            const pRank = rankById.get(p.id) ?? 0;
+            const isMe = p.id === me.id;
+            const pedestalHeight = pRank === 1 ? 'h-24' : pRank === 2 ? 'h-20' : 'h-16';
+            const glow =
+              pRank === 1
+                ? 'shadow-[0_0_24px_rgba(255,180,90,0.35)] border-[#FFAE4D]/60'
+                : pRank === 2
+                  ? 'shadow-[0_0_20px_rgba(140,120,255,0.35)] border-[#8B7BFF]/50'
+                  : 'shadow-[0_0_20px_rgba(255,95,150,0.35)] border-[#FF5C9A]/50';
+            const pedestalBg =
+              pRank === 1
+                ? 'bg-[linear-gradient(180deg,rgba(255,215,90,0.55),rgba(255,163,0,0.08))]'
+                : pRank === 2
+                  ? 'bg-[linear-gradient(180deg,rgba(214,218,238,0.45),rgba(112,121,160,0.08))]'
+                  : 'bg-[linear-gradient(180deg,rgba(201,137,84,0.45),rgba(109,68,38,0.08))]';
+
+            return (
+              <div key={p.id} className="text-center">
+                <div className="relative inline-flex">
+                  {isMe && (
+                    <span className="absolute -top-6 left-1/2 -translate-x-1/2 text-[10px] font-bold tracking-[0.14em] text-[#7CE2A9] uppercase">
+                      You
+                    </span>
+                  )}
+                  <div className={`rounded-2xl border ${glow} p-1 bg-[#121521]`}>
+                    <Avatar id={p.avatar} size={54} />
+                  </div>
+                </div>
+                <div className="mt-1.5 font-semibold text-sm leading-tight truncate">{p.name}</div>
+                <div className="font-mono font-bold text-[#FFD259] leading-tight">{p.score}</div>
+                <div className={`mt-2 rounded-t-xl ${pedestalHeight} ${pedestalBg} border border-white/10 flex items-center justify-center font-display text-3xl font-bold`}>
+                  {pRank}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {rest.length > 0 ? (
+        <div className="space-y-2 max-h-[36vh] overflow-y-auto pr-1">
+          {rest.map((p) => {
+            const pRank = rankById.get(p.id) ?? 0;
+            const isMe = p.id === me.id;
+            return (
+              <div
+                key={p.id}
+                className={`rounded-2xl border px-3 py-2.5 flex items-center gap-3 ${
+                  isMe
+                    ? 'border-[#5BD0FF]/60 bg-[rgba(91,208,255,0.10)] shadow-[0_0_0_1px_rgba(91,208,255,0.2)]'
+                    : 'border-line bg-white/[0.02]'
+                }`}
+              >
+                <div className="w-5 text-center font-mono text-sm text-dim">{pRank}</div>
+                <Avatar id={p.avatar} size={30} />
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-semibold truncate">
+                    {p.name}
+                    {isMe && <span className="text-[#5BD0FF] text-xs ml-1.5">(You)</span>}
+                  </div>
+                </div>
+                <div className="font-mono font-bold text-sm">{p.score}</div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-line bg-white/[0.02] p-4 text-center text-dim text-sm">
+          Waiting for more players on the board.
+        </div>
+      )}
+
+      <div className="mt-4 text-center text-dim text-sm">
+        Your position · <span className="font-mono text-text font-bold">#{rank}</span> of{' '}
+        <span className="font-mono text-text font-bold">{total}</span>
+      </div>
     </div>
   );
 }

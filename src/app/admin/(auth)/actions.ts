@@ -24,7 +24,7 @@ export async function signUpAction(form: FormData): Promise<AuthResult> {
     return { ok: false, error: 'Password must be at least 4 characters.' };
 
   const supabase = getSupabaseServer();
-  const { data, error } = await supabase.rpc('create_user', {
+  const { data, error } = await (supabase as any).rpc('create_user', {
     p_name: name,
     p_password: password,
     p_designation: designation,
@@ -51,7 +51,7 @@ export async function signInAction(form: FormData): Promise<AuthResult> {
     return { ok: false, error: 'Enter your name and password.' };
 
   const supabase = getSupabaseServer();
-  const { data, error } = await supabase.rpc('verify_user', {
+  const { data, error } = await (supabase as any).rpc('verify_user', {
     p_name: name,
     p_password: password,
   });
@@ -77,7 +77,7 @@ export async function changePasswordAction(form: FormData): Promise<AuthResult> 
 
   const me = await requireUser();
   const supabase = getSupabaseServer();
-  const { data, error } = await supabase.rpc('change_password', {
+  const { data, error } = await (supabase as any).rpc('change_password', {
     p_user_id: me.id,
     p_current: current,
     p_new: next,

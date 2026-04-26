@@ -97,7 +97,7 @@ export function Editor({ quiz, questions }: { quiz: Quiz; questions: Question[] 
       await updateQuizAction(quiz.id, {
         title: title.trim(),
         description: description.trim(),
-        status: status ?? quiz.status,
+        ...(status ? { status } : {}),
         scheduled_for: scheduledFor ? new Date(scheduledFor).toISOString() : null,
       });
       await saveQuestionsAction(quiz.id, list);

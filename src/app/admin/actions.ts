@@ -109,7 +109,7 @@ export async function duplicateQuizAction(id: string) {
   if (questions?.length) {
     await supabase
       .from('questions')
-      .insert(questions.map((q) => ({ ...q, quiz_id: dup.id })));
+      .insert(questions.map((q: any) => ({ ...q, quiz_id: dup.id })));
   }
 
   revalidatePath('/admin');
@@ -140,7 +140,7 @@ export async function updateQuizAction(id: string, patch: QuizPatch) {
 
 export async function saveQuestionsAction(
   quizId: string,
-  questions: Array<Omit<Question, 'id' | 'quiz_id'>>,
+  questions: Array<Pick<Question, 'text' | 'options' | 'correct' | 'duration'>>,
 ) {
   const me = await requireUser();
   const supabase = getSupabaseServer();

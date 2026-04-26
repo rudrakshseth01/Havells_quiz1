@@ -3,7 +3,7 @@ import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/Button';
-import { signInAction } from './actions';
+import { signInAction } from '../actions';
 
 export default function SignInPage() {
   const router = useRouter();

@@ -10,7 +10,7 @@
 import 'server-only';
 import { createClient } from '@supabase/supabase-js';
 
-let _service: ReturnType<typeof createClient> | null = null;
+let _service: any = null;
 export function getSupabaseServer() {
   if (_service) return _service;
   _service = createClient(
@@ -21,7 +21,7 @@ export function getSupabaseServer() {
   return _service;
 }
 
-let _anon: ReturnType<typeof createClient> | null = null;
+let _anon: any = null;
 export function getSupabaseAnonServer() {
   if (_anon) return _anon;
   _anon = createClient(

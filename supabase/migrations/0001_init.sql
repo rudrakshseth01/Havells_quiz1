@@ -171,7 +171,7 @@ create or replace function public.create_user(
 ) returns public.users
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 declare
   u public.users;
@@ -192,7 +192,7 @@ create or replace function public.verify_user(
 ) returns public.users
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 declare
   u public.users;
@@ -213,7 +213,7 @@ create or replace function public.change_password(
 ) returns boolean
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 declare
   u public.users;
@@ -232,9 +232,47 @@ $$;
 -- ============================================================
 -- Realtime — enable broadcast on the tables players subscribe to.
 -- ============================================================
-alter publication supabase_realtime add table public.game_sessions;
-alter publication supabase_realtime add table public.players;
-alter publication supabase_realtime add table public.answers;
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'game_sessions'
+  ) then
+    alter publication supabase_realtime add table public.game_sessions;
+  end if;
+end
+$$;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'players'
+  ) then
+    alter publication supabase_realtime add table public.players;
+  end if;
+end
+$$;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'answers'
+  ) then
+    alter publication supabase_realtime add table public.answers;
+  end if;
+end
+$$;
 
 -- ============================================================
 -- Row-Level Security

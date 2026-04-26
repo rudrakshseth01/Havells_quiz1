@@ -31,9 +31,23 @@ export async function signUpAction(form: FormData): Promise<AuthResult> {
   });
 
   if (error) {
+    const msg = String(error.message ?? '').toLowerCase();
     if (String(error.message).includes('username_taken')) {
       return { ok: false, error: 'That name is already taken. Try signing in.' };
     }
+    if (msg.includes('gen_salt') || msg.includes('pgcrypto')) {
+      return {
+        ok: false,
+        error: 'Database setup incomplete: enable pgcrypto and set auth function search_path to include extensions.',
+      };
+    }
+    if (msg.includes('create_user') && msg.includes('does not exist')) {
+      return {
+        ok: false,
+        error: 'Database setup incomplete: create_user function missing. Rerun migration.',
+      };
+    }
+    console.error('signUpAction rpc(create_user) failed:', error);
     return { ok: false, error: 'Something went wrong. Please try again.' };
   }
 

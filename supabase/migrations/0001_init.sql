@@ -79,10 +79,11 @@ create table if not exists public.players (
   name        text not null,
   avatar      text not null default 'ninja',
   score       int  not null default 0,
-  joined_at   timestamptz not null default now(),
-  unique (session_id, lower(name))
+  joined_at   timestamptz not null default now()
 );
 create index if not exists players_session_idx on public.players (session_id);
+create unique index if not exists players_session_name_unique
+  on public.players (session_id, lower(name));
 
 -- ── answers ──────────────────────────────────────────────────
 create table if not exists public.answers (

@@ -198,7 +198,7 @@ export function LiveConsole({
     if (phase !== 'leaderboard') return;
     const t = setTimeout(() => {
       nextQuestion().catch(() => {});
-    }, 6000);
+    }, 3000);
     return () => clearTimeout(t);
   }, [phase, qIdx, questions.length, session.id]);
 
@@ -296,12 +296,14 @@ export function LiveConsole({
               onSkip={() => setSessionPhaseAction(session.id, 'reveal')}
             />
           )}
-          {phase === 'reveal' && current && (
-            <RevealView
-              question={current}
-              answers={currentAnswers}
-              totalPlayers={players.length}
-              onNext={showLeaderboard}
+          {phase === 'reveal' && (
+            <ResultsBoard
+              players={sorted}
+              eyebrow="Round results"
+              title="Leaderboard"
+              actionLabel=""
+              onAction={nextQuestion}
+              showAction={false}
             />
           )}
           {phase === 'leaderboard' && (
@@ -563,6 +565,7 @@ function ResultsBoard({
   actionLabel,
   onAction,
   final = false,
+  showAction = true,
 }: {
   players: Player[];
   eyebrow: string;
@@ -570,6 +573,7 @@ function ResultsBoard({
   actionLabel: string;
   onAction: () => void;
   final?: boolean;
+  showAction?: boolean;
 }) {
   const top3 = players.slice(0, 3);
   const podium = [top3[1], top3[0], top3[2]].filter(Boolean) as Player[];
@@ -657,11 +661,17 @@ function ResultsBoard({
         </div>
       )}
 
-      <div className="mt-4 flex justify-end">
-        <Button onClick={onAction} size={final ? 'lg' : 'md'}>
-          {actionLabel}
-        </Button>
-      </div>
+      {showAction ? (
+        <div className="mt-4 flex justify-end">
+          <Button onClick={onAction} size={final ? 'lg' : 'md'}>
+            {actionLabel}
+          </Button>
+        </div>
+      ) : (
+        <div className="mt-4 text-right text-[11px] font-bold tracking-[0.14em] text-dim uppercase">
+          Syncing players...
+        </div>
+      )}
     </div>
   );
 }

@@ -296,23 +296,14 @@ export function LiveConsole({
             />
           )}
           {phase === 'leaderboard' && (
-            <ResultsView
+            <LeaderboardView
               players={sorted}
-              eyebrow="Round results"
-              title="Leaderboard"
-              actionLabel={qIdx + 1 >= questions.length ? 'Show final results →' : 'Next question →'}
-              onAction={nextQuestion}
+              isLast={qIdx + 1 >= questions.length}
+              onNext={nextQuestion}
             />
           )}
           {phase === 'final' && (
-            <ResultsView
-              players={sorted}
-              eyebrow="Final results"
-              title="🎉 That's a wrap!"
-              actionLabel="Save & view full report"
-              onAction={endGame}
-              final
-            />
+            <FinalView players={sorted} onClose={endGame} />
           )}
         </section>
 
@@ -517,97 +508,98 @@ function RevealView({
   );
 }
 
-function ResultsView({
+function LeaderboardView({
   players,
-  eyebrow,
-  title,
-  actionLabel,
-  onAction,
-  final = false,
+  isLast,
+  onNext,
 }: {
   players: Player[];
-  eyebrow: string;
-  title: string;
-  actionLabel: string;
-  onAction: () => void;
-  final?: boolean;
+  isLast: boolean;
+  onNext: () => void;
+}) {
+  return (
+    <div>
+      <div className="text-[11px] font-bold tracking-[0.14em] text-dim uppercase mb-2">
+        Leaderboard
+      </div>
+      <h2 className="font-display text-3xl font-bold mb-6 tracking-tight">
+        Standings
+      </h2>
+      <div className="space-y-2 mb-8">
+        {players.slice(0, 8).map((p, i) => (
+          <div
+            key={p.id}
+            className="flex items-center gap-3 px-4 py-3 rounded-xl bg-white/[0.03] border border-line"
+          >
+            <span className="w-6 text-center font-display font-bold text-lg text-dim">
+              {i + 1}
+            </span>
+            <Avatar id={p.avatar} size={36} />
+            <span className="flex-1 font-medium">{p.name}</span>
+            <span className="font-mono font-bold text-lg">{p.score}</span>
+          </div>
+        ))}
+      </div>
+      <div className="flex justify-end">
+        <Button onClick={onNext}>
+          {isLast ? 'Show final results →' : 'Next question →'}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function FinalView({
+  players,
+  onClose,
+}: {
+  players: Player[];
+  onClose: () => void;
 }) {
   const top3 = players.slice(0, 3);
-  const podium = [top3[1], top3[0], top3[2]].filter(Boolean) as Player[];
-  const rankById = new Map(players.map((p, i) => [p.id, i + 1]));
-  const rest = players.slice(3);
-
   return (
-    <div className={final ? 'text-center' : ''}>
+    <div className="text-center">
       <div className="text-[11px] font-bold tracking-[0.14em] text-dim uppercase mb-3">
-        {eyebrow}
+        Final results
       </div>
       <h2 className="font-display text-4xl font-bold mb-8 tracking-tight">
-        {title}
+        🎉 That's a wrap!
       </h2>
-      <div className="grid grid-cols-3 gap-2 items-end mb-4">
-        {podium.map((p) => {
-          const pRank = rankById.get(p.id) ?? 0;
-          const isMe = false;
-          const pedestalHeight = pRank === 1 ? 'h-24' : pRank === 2 ? 'h-20' : 'h-16';
-          const glow =
-            pRank === 1
-              ? 'shadow-[0_0_24px_rgba(255,180,90,0.35)] border-[#FFAE4D]/60'
-              : pRank === 2
-                ? 'shadow-[0_0_20px_rgba(140,120,255,0.35)] border-[#8B7BFF]/50'
-                : 'shadow-[0_0_20px_rgba(255,95,150,0.35)] border-[#FF5C9A]/50';
-          const pedestalBg =
-            pRank === 1
-              ? 'bg-[linear-gradient(180deg,rgba(255,215,90,0.55),rgba(255,163,0,0.08))]'
-              : pRank === 2
-                ? 'bg-[linear-gradient(180deg,rgba(214,218,238,0.45),rgba(112,121,160,0.08))]'
-                : 'bg-[linear-gradient(180deg,rgba(201,137,84,0.45),rgba(109,68,38,0.08))]';
-
+      <div className="grid grid-cols-3 gap-4 max-w-md mx-auto mb-10">
+        {top3.map((p, i) => {
+          const heights = ['h-32', 'h-44', 'h-24'];
+          const orders = ['order-1', 'order-2', 'order-3'];
+          // 1st in middle, 2nd left, 3rd right
+          const visualOrder = [1, 0, 2];
+          const place = i + 1;
           return (
-            <div key={p.id} className="text-center">
-              <div className="relative inline-flex">
-                {isMe && (
-                  <span className="absolute -top-6 left-1/2 -translate-x-1/2 text-[10px] font-bold tracking-[0.14em] text-[#7CE2A9] uppercase">
-                    You
-                  </span>
-                )}
-                <div className={`rounded-2xl border ${glow} p-1 bg-[#121521]`}>
-                  <Avatar id={p.avatar} size={56} />
-                </div>
-              </div>
-              <div className="mt-2 font-bold truncate px-1">{p.name}</div>
+            <div
+              key={p.id}
+              className={`flex flex-col items-center justify-end ${orders[visualOrder[i]]}`}
+            >
+              <Avatar id={p.avatar} size={56} />
+              <div className="font-bold mt-2">{p.name}</div>
               <div className="font-mono text-[#5BD0FF] mb-2">{p.score}</div>
-              <div className={`w-full ${pedestalHeight} rounded-t-xl flex items-center justify-center font-display font-bold text-2xl border border-white/10 ${pedestalBg}`}>
-                {pRank}
+              <div
+                className={`w-full ${i === 0 ? 'h-44' : i === 1 ? 'h-32' : 'h-24'} rounded-t-xl flex items-center justify-center font-display font-bold text-2xl`}
+                style={{
+                  background:
+                    i === 0
+                      ? 'linear-gradient(180deg,#FFD259,rgba(255,210,89,0.3))'
+                      : i === 1
+                        ? 'linear-gradient(180deg,#A4A8B8,rgba(164,168,184,0.3))'
+                        : 'linear-gradient(180deg,#C77B58,rgba(199,123,88,0.3))',
+                }}
+              >
+                {place}
               </div>
             </div>
           );
         })}
       </div>
-
-      {rest.length > 0 && (
-        <div className="space-y-2 mb-8 text-left">
-          {rest.map((p, i) => (
-            <div
-              key={p.id}
-              className="flex items-center gap-3 px-4 py-3 rounded-xl bg-white/[0.03] border border-line"
-            >
-              <span className="w-6 text-center font-display font-bold text-lg text-dim">
-                {i + 4}
-              </span>
-              <Avatar id={p.avatar} size={36} />
-              <span className="flex-1 font-medium">{p.name}</span>
-              <span className="font-mono font-bold text-lg">{p.score}</span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <div className="flex justify-end">
-        <Button size={final ? 'lg' : 'md'} onClick={onAction}>
-          {actionLabel}
-        </Button>
-      </div>
+      <Button size="lg" onClick={onClose}>
+        Save & view full report
+      </Button>
     </div>
   );
 }

@@ -146,6 +146,7 @@ export function GameClient({
         lockedChoice={lockedChoices.get(current.id) ?? null}
         sessionId={session.id}
         playerId={player.id}
+        revealMode={false}
         onLocked={(choice) =>
           setLockedChoices((m) => {
             const next = new Map(m);
@@ -158,18 +159,23 @@ export function GameClient({
   }
   if (session.phase === 'reveal' && current) {
     return (
-      <RevealView
+      <QuestionView
         question={current}
+        questionIndex={qIdx}
+        totalQuestions={totalQuestions}
+        startedAt={session.question_started_at}
+        lockedChoice={lockedChoices.get(current.id) ?? null}
         sessionId={session.id}
         playerId={player.id}
+        revealMode
         revealed={revealedAnswers.get(current.id) ?? null}
-        onRevealed={(a) =>
+        onRevealed={(a) => {
           setRevealedAnswers((m) => {
             const next = new Map(m);
             next.set(current.id, a);
             return next;
-          })
-        }
+          });
+        }}
         currentScore={player.score}
       />
     );
@@ -400,7 +406,11 @@ function QuestionView({
   lockedChoice,
   sessionId,
   playerId,
+  revealMode = false,
+  revealed,
   onLocked,
+  onRevealed,
+  currentScore,
 }: {
   question: Question;
   questionIndex: number;
@@ -409,22 +419,62 @@ function QuestionView({
   lockedChoice: number | null;
   sessionId: string;
   playerId: string;
-  onLocked: (choice: number) => void;
+  revealMode?: boolean;
+  revealed?: AnswerRow | null;
+  onLocked?: (choice: number) => void;
+  onRevealed?: (a: AnswerRow) => void;
+  currentScore?: number;
 }) {
   const start = startedAt ? new Date(startedAt).getTime() : Date.now();
   const [now, setNow] = useState(Date.now());
   const [submitting, setSubmitting] = useState(false);
   const [localChoice, setLocalChoice] = useState<number | null>(lockedChoice);
+  const [loadingReveal, setLoadingReveal] = useState(revealMode && !revealed);
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 200);
     return () => clearInterval(t);
   }, []);
 
+  useEffect(() => {
+    setLocalChoice(lockedChoice);
+  }, [lockedChoice]);
+
+  useEffect(() => {
+    if (!revealMode) return;
+    if (revealed) {
+      setLoadingReveal(false);
+      return;
+    }
+    let alive = true;
+    setLoadingReveal(true);
+    fetchMyAnswerForRevealAction({
+      sessionId,
+      playerId,
+      questionId: question.id,
+    })
+      .then((a) => {
+        if (!alive) return;
+        if (a && onRevealed) onRevealed(a as AnswerRow);
+      })
+      .finally(() => {
+        if (alive) setLoadingReveal(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [revealMode, revealed, sessionId, playerId, question.id, onRevealed]);
+
   const elapsedMs = Math.max(0, now - start);
   const remaining = Math.max(0, question.duration - elapsedMs / 1000);
   const expired = remaining <= 0;
-  const isLocked = lockedChoice !== null || localChoice !== null;
+  const isLocked = !revealMode && (lockedChoice !== null || localChoice !== null);
+  const showReveal = revealMode;
+  const answerRow = revealed ?? null;
+  const selectedChoice = showReveal ? (answerRow?.choice ?? lockedChoice) : localChoice;
+  const correctChoice = showReveal ? answerRow?.correct_index ?? null : null;
+  const isAnsweredCorrectly = showReveal ? Boolean(answerRow?.is_correct) : false;
+  const pointsEarned = showReveal ? answerRow?.points ?? 0 : 0;
 
   async function pick(choice: number) {
     if (isLocked || submitting || expired) return;
@@ -438,7 +488,7 @@ function QuestionView({
         choice,
         ms: Math.round(elapsedMs),
       });
-      if (res.ok) onLocked(choice);
+      if (res.ok) onLocked?.(choice);
     } finally {
       setSubmitting(false);
     }
@@ -468,14 +518,18 @@ function QuestionView({
         <span className="text-[11px] font-bold tracking-[0.18em] uppercase text-dim">
           Question {questionIndex + 1} / {totalQuestions}
         </span>
-        <div className="rounded-full border border-[#8D7DFF]/40 bg-[#8D7DFF]/12 px-3 py-1 text-[11px] font-bold tracking-[0.12em] text-[#D8D2FF] shadow-[0_0_0_1px_rgba(141,125,255,0.15)_inset]">
-          {Math.ceil(remaining)}s
+        <div className={`rounded-full border px-3 py-1 text-[11px] font-bold tracking-[0.12em] shadow-[0_0_0_1px_rgba(141,125,255,0.15)_inset] ${
+          showReveal
+            ? 'border-emerald-400/40 bg-emerald-400/12 text-emerald-300'
+            : 'border-[#8D7DFF]/40 bg-[#8D7DFF]/12 text-[#D8D2FF]'
+        }`}>
+          {showReveal ? (loadingReveal ? 'Revealing…' : isAnsweredCorrectly ? `+${pointsEarned} pts` : 'Review') : `${Math.ceil(remaining)}s`}
         </div>
       </div>
 
       <div className="mb-3 h-1.5 overflow-hidden rounded-full bg-white/[0.08]">
         <div
-          className="h-full rounded-full bg-[linear-gradient(90deg,#7C5CFF,#5BD0FF)] transition-[width]"
+          className={`h-full rounded-full transition-[width] ${showReveal ? 'bg-emerald-400' : 'bg-[linear-gradient(90deg,#7C5CFF,#5BD0FF)]'}`}
           style={{ width: `${Math.max(0, Math.min(100, (remaining / question.duration) * 100))}%` }}
         />
       </div>
@@ -489,22 +543,31 @@ function QuestionView({
       <div className="flex flex-1 flex-col gap-3">
         {question.options.map((opt, i) => {
           const choiceLetter = String.fromCharCode(65 + i);
-          const selected = localChoice === i;
-          return (
-            <button
-              key={i}
-              onClick={() => pick(i)}
-              disabled={expired}
-              className={`group flex min-h-[82px] items-center gap-4 rounded-[22px] border px-4 py-4 text-left transition active:scale-[0.99] disabled:opacity-55 ${
-                selected
-                  ? 'border-white/20 bg-white/[0.08] shadow-[0_14px_32px_rgba(0,0,0,0.22)]'
-                  : 'border-white/8 bg-[#11141D] shadow-[0_10px_28px_rgba(0,0,0,0.2)] hover:border-white/14 hover:bg-white/[0.05]'
-              }`}
-              style={selected ? { boxShadow: `0 0 0 1px ${CHOICE_COLORS[i]}33, 0 14px 32px rgba(0,0,0,0.22)` } : undefined}
-            >
+          const isSelected = selectedChoice === i;
+          const isCorrect = correctChoice === i;
+          const showWrongSelection = showReveal && isSelected && !isCorrect;
+          const cardTone = showReveal
+            ? isCorrect
+              ? 'border-emerald-400/60 bg-[rgba(46,194,126,0.14)] shadow-[0_14px_32px_rgba(46,194,126,0.18)]'
+              : showWrongSelection
+                ? 'border-rose-400/60 bg-[rgba(255,92,122,0.14)] shadow-[0_14px_32px_rgba(255,92,122,0.18)]'
+                : 'border-white/8 bg-[#11141D] shadow-[0_10px_28px_rgba(0,0,0,0.2)]'
+            : isSelected
+              ? 'border-white/20 bg-white/[0.08] shadow-[0_14px_32px_rgba(0,0,0,0.22)]'
+              : 'border-white/8 bg-[#11141D] shadow-[0_10px_28px_rgba(0,0,0,0.2)] hover:border-white/14 hover:bg-white/[0.05]';
+          const card = (
+            <>
               <div
                 className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl text-sm font-black tracking-[0.18em] text-white shadow-[0_10px_24px_rgba(0,0,0,0.24)]"
-                style={{ background: CHOICE_COLORS[i] }}
+                style={{
+                  background: showReveal
+                    ? isCorrect
+                      ? '#2EC27E'
+                      : showWrongSelection
+                        ? '#FF5C7A'
+                        : '#3B4252'
+                    : CHOICE_COLORS[i],
+                }}
               >
                 {choiceLetter}
               </div>
@@ -512,94 +575,78 @@ function QuestionView({
                 <div className="font-display text-[1.05rem] font-bold leading-snug text-text">
                   {opt}
                 </div>
+                {showReveal && (
+                  <div className="mt-1 text-[11px] font-bold uppercase tracking-[0.16em] text-dim">
+                    {loadingReveal
+                      ? 'Checking answer'
+                      : isCorrect
+                        ? 'Correct answer'
+                        : showWrongSelection
+                          ? 'Your answer'
+                          : 'Not selected'}
+                  </div>
+                )}
               </div>
+            </>
+          );
+
+          if (showReveal) {
+            return (
+              <div key={i} className={`group relative flex min-h-[82px] items-center gap-4 rounded-[22px] border px-4 py-4 text-left ${cardTone}`}>
+                {card}
+              </div>
+            );
+          }
+
+          return (
+            <button
+              key={i}
+              onClick={() => pick(i)}
+              disabled={expired}
+              className={`group flex min-h-[82px] items-center gap-4 rounded-[22px] border px-4 py-4 text-left transition active:scale-[0.99] disabled:opacity-55 ${cardTone}`}
+              style={isSelected ? { boxShadow: `0 0 0 1px ${CHOICE_COLORS[i]}33, 0 14px 32px rgba(0,0,0,0.22)` } : undefined}
+            >
+              {card}
             </button>
           );
         })}
       </div>
 
-      <div className="pt-3 text-center text-[11px] font-bold tracking-[0.18em] uppercase text-dim">
-        Tap your answer
-      </div>
+      {showReveal ? (
+        <>
+          <div className="relative pt-3 text-center text-[11px] font-bold tracking-[0.18em] uppercase text-dim">
+            {loadingReveal ? 'Revealing answer' : isAnsweredCorrectly ? 'Nice work' : 'Review the round'}
+            {loadingReveal ? null : isAnsweredCorrectly ? (
+              <span className="pointer-events-none absolute left-1/2 top-0 -translate-x-1/2 -translate-y-4 rounded-full border border-emerald-400/40 bg-emerald-400/12 px-3 py-1 text-[11px] font-bold tracking-[0.14em] text-emerald-300 animate-[rewardFloat_1.8s_ease-out_forwards]">
+                +{pointsEarned} points
+              </span>
+            ) : null}
+          </div>
+          <div className="mt-3 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-center text-sm text-dim">
+            Total score · <span className="text-text font-mono font-bold">{currentScore ?? 0}</span>
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="pt-3 text-center text-[11px] font-bold tracking-[0.18em] uppercase text-dim">
+            Tap your answer
+          </div>
 
-      {expired && (
-        <div className="mt-3 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-center text-sm text-dim">
-          Time's up. Wait for the reveal.
-        </div>
+          {expired && (
+            <div className="mt-3 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-center text-sm text-dim">
+              Time's up. Wait for the reveal.
+            </div>
+          )}
+        </>
       )}
-    </div>
-  );
-}
 
-function RevealView({
-  question,
-  sessionId,
-  playerId,
-  revealed,
-  onRevealed,
-  currentScore,
-}: {
-  question: Question;
-  sessionId: string;
-  playerId: string;
-  revealed: AnswerRow | null;
-  onRevealed: (a: AnswerRow) => void;
-  currentScore: number;
-}) {
-  const [loading, setLoading] = useState(!revealed);
-
-  useEffect(() => {
-    if (revealed) return;
-    let alive = true;
-    fetchMyAnswerForRevealAction({
-      sessionId,
-      playerId,
-      questionId: question.id,
-    })
-      .then((a) => {
-        if (!alive) return;
-        if (a) onRevealed(a as AnswerRow);
-      })
-      .finally(() => alive && setLoading(false));
-    return () => {
-      alive = false;
-    };
-  }, [sessionId, playerId, question.id, revealed, onRevealed]);
-
-  const right = revealed?.correct_index ?? null;
-  const isRight = revealed?.is_correct ?? false;
-  const points = revealed?.points ?? 0;
-  const didNotAnswer = !loading && !revealed;
-
-  return (
-    <div className="text-center py-6">
-      <div className="text-6xl mb-3">
-        {loading ? '⏳' : isRight ? '🎉' : didNotAnswer ? '⏱️' : '💔'}
-      </div>
-      <h2 className="font-display text-3xl font-bold mb-1 tracking-tight">
-        {loading
-          ? 'Revealing…'
-          : isRight
-            ? 'Correct!'
-            : didNotAnswer
-              ? 'Too slow'
-              : 'Not quite'}
-      </h2>
-      {isRight && (
-        <p className="text-[#5BD0FF] font-mono text-lg mb-4">+{points} pts</p>
-      )}
-      <div className="border border-line rounded-2xl p-4 bg-white/[0.025] text-left mt-6">
-        <div className="text-[11px] font-bold tracking-[0.14em] text-dim uppercase mb-2">
-          Correct answer
-        </div>
-        <div className="font-medium">
-          {right === null ? 'Answer unavailable' : question.options[right]}
-        </div>
-      </div>
-      <div className="text-dim text-sm mt-6">
-        Total score ·{' '}
-        <span className="text-text font-mono font-bold">{currentScore}</span>
-      </div>
+      <style>{`
+        @keyframes rewardFloat {
+          0% { transform: translate3d(-50%, 8px, 0) scale(0.9); opacity: 0; }
+          15% { opacity: 1; }
+          100% { transform: translate3d(-50%, -22px, 0) scale(1.05); opacity: 0; }
+        }
+      `}</style>
     </div>
   );
 }

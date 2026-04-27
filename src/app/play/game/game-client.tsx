@@ -116,6 +116,8 @@ export function GameClient({
 
   // ── Render by phase
   const current = questions[session.current_q_idx] ?? null;
+  const qIdx = session.current_q_idx;
+  const totalQuestions = questions.length;
 
   if (session.phase === 'lobby') {
     return (
@@ -138,6 +140,8 @@ export function GameClient({
     return (
       <QuestionView
         question={current}
+        questionIndex={qIdx}
+        totalQuestions={totalQuestions}
         startedAt={session.question_started_at}
         lockedChoice={lockedChoices.get(current.id) ?? null}
         sessionId={session.id}
@@ -390,6 +394,8 @@ function LobbyView({
 
 function QuestionView({
   question,
+  questionIndex,
+  totalQuestions,
   startedAt,
   lockedChoice,
   sessionId,
@@ -397,6 +403,8 @@ function QuestionView({
   onLocked,
 }: {
   question: Question;
+  questionIndex: number;
+  totalQuestions: number;
   startedAt: string | null;
   lockedChoice: number | null;
   sessionId: string;
@@ -438,49 +446,84 @@ function QuestionView({
 
   if (isLocked) {
     return (
-      <div className="text-center py-12">
-        <div className="text-5xl mb-4">✓</div>
-        <h2 className="font-display text-2xl font-bold mb-2 tracking-tight">
-          Answer locked
-        </h2>
-        <p className="text-dim">
-          Hang tight — your result will be revealed when the round ends.
-        </p>
+      <div className="mx-auto flex min-h-[100svh] w-full max-w-[420px] flex-col px-4 py-4">
+        <div className="rounded-[24px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.035),rgba(255,255,255,0.015))] p-4 text-center shadow-[0_18px_50px_rgba(0,0,0,0.28)]">
+          <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-400/15 text-3xl text-emerald-300">
+            ✓
+          </div>
+          <h2 className="font-display text-2xl font-bold tracking-tight text-text">
+            Answer locked
+          </h2>
+          <p className="mt-2 text-sm text-dim">
+            Hang tight — your result will be revealed when the round ends.
+          </p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-3">
-        <span className="text-[11px] font-bold tracking-[0.14em] text-dim uppercase">
-          Tap to answer
+    <div className="mx-auto flex min-h-[100svh] w-full max-w-[420px] flex-col px-4 py-4">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <span className="text-[11px] font-bold tracking-[0.18em] uppercase text-dim">
+          Question {questionIndex + 1} / {totalQuestions}
         </span>
-        <span className="font-mono text-xl font-bold text-[#5BD0FF]">
+        <div className="rounded-full border border-[#8D7DFF]/40 bg-[#8D7DFF]/12 px-3 py-1 text-[11px] font-bold tracking-[0.12em] text-[#D8D2FF] shadow-[0_0_0_1px_rgba(141,125,255,0.15)_inset]">
           {Math.ceil(remaining)}s
-        </span>
+        </div>
       </div>
-      <h2 className="font-display text-xl font-bold leading-tight tracking-tight mb-6">
-        {question.text}
-      </h2>
-      <div className="grid grid-cols-1 gap-3">
-        {question.options.map((opt, i) => (
-          <button
-            key={i}
-            onClick={() => pick(i)}
-            disabled={expired}
-            className="text-left rounded-2xl px-4 py-4 font-medium text-[#0A0B12] disabled:opacity-50"
-            style={{ background: CHOICE_COLORS[i] }}
-          >
-            <span className="text-[11px] font-bold tracking-[0.14em] mr-2 opacity-70">
-              {String.fromCharCode(65 + i)}
-            </span>
-            {opt}
-          </button>
-        ))}
+
+      <div className="mb-3 h-1.5 overflow-hidden rounded-full bg-white/[0.08]">
+        <div
+          className="h-full rounded-full bg-[linear-gradient(90deg,#7C5CFF,#5BD0FF)] transition-[width]"
+          style={{ width: `${Math.max(0, Math.min(100, (remaining / question.duration) * 100))}%` }}
+        />
       </div>
+
+      <div className="mb-4 rounded-[22px] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.02))] p-4 shadow-[0_18px_50px_rgba(0,0,0,0.24)]">
+        <h2 className="font-display text-[clamp(1.55rem,5.1vw,2.1rem)] font-bold leading-tight tracking-tight text-text">
+          {question.text}
+        </h2>
+      </div>
+
+      <div className="flex flex-1 flex-col gap-3">
+        {question.options.map((opt, i) => {
+          const choiceLetter = String.fromCharCode(65 + i);
+          const selected = localChoice === i;
+          return (
+            <button
+              key={i}
+              onClick={() => pick(i)}
+              disabled={expired}
+              className={`group flex min-h-[82px] items-center gap-4 rounded-[22px] border px-4 py-4 text-left transition active:scale-[0.99] disabled:opacity-55 ${
+                selected
+                  ? 'border-white/20 bg-white/[0.08] shadow-[0_14px_32px_rgba(0,0,0,0.22)]'
+                  : 'border-white/8 bg-[#11141D] shadow-[0_10px_28px_rgba(0,0,0,0.2)] hover:border-white/14 hover:bg-white/[0.05]'
+              }`}
+              style={selected ? { boxShadow: `0 0 0 1px ${CHOICE_COLORS[i]}33, 0 14px 32px rgba(0,0,0,0.22)` } : undefined}
+            >
+              <div
+                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl text-sm font-black tracking-[0.18em] text-white shadow-[0_10px_24px_rgba(0,0,0,0.24)]"
+                style={{ background: CHOICE_COLORS[i] }}
+              >
+                {choiceLetter}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="font-display text-[1.05rem] font-bold leading-snug text-text">
+                  {opt}
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="pt-3 text-center text-[11px] font-bold tracking-[0.18em] uppercase text-dim">
+        Tap your answer
+      </div>
+
       {expired && (
-        <div className="text-dim text-sm text-center mt-4">
+        <div className="mt-3 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-center text-sm text-dim">
           Time's up. Wait for the reveal.
         </div>
       )}

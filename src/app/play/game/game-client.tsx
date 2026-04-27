@@ -1,12 +1,14 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { getSupabaseBrowser } from '@/lib/supabase/client';
 import { Avatar } from '@/components/ui/Avatar';
 import {
   submitAnswerAction,
   fetchMyAnswerForRevealAction,
+  sendLobbyEmojiAction,
 } from '../actions';
+import { LOBBY_EMOJIS } from '@/lib/reactions';
 import type {
   GameSession,
   Player,
@@ -37,6 +39,7 @@ export function GameClient({
   const [session, setSession] = useState(initialSession);
   const [player, setPlayer] = useState(initialPlayer);
   const [otherPlayers, setOtherPlayers] = useState<Player[]>([]);
+  const lobbyPlayers = useMemo(() => [player, ...otherPlayers], [player, otherPlayers]);
   // Map of question_id -> { choice } (locked-in marker, no scoring info)
   const [lockedChoices, setLockedChoices] = useState<Map<string, number>>(new Map());
   // Map of question_id -> { is_correct, points } populated only when phase >= reveal
@@ -51,6 +54,7 @@ export function GameClient({
       .from('players')
       .select('*')
       .eq('session_id', session.id)
+      .order('joined_at')
       .then(({ data }) => {
         setOtherPlayers(((data ?? []) as Player[]).filter((p) => p.id !== player.id));
       });
@@ -114,7 +118,21 @@ export function GameClient({
   const current = questions[session.current_q_idx] ?? null;
 
   if (session.phase === 'lobby') {
-    return <LobbyView player={player} quizTitle={quizTitle} otherCount={otherPlayers.length + 1} />;
+    return (
+      <LobbyView
+        player={player}
+        players={lobbyPlayers}
+        roomCode={session.room_code}
+        quizTitle={quizTitle}
+        onSendEmoji={async (emoji) => {
+          await sendLobbyEmojiAction({
+            sessionId: session.id,
+            playerId: player.id,
+            emoji,
+          });
+        }}
+      />
+    );
   }
   if (session.phase === 'question' && current) {
     return (
@@ -180,52 +198,190 @@ export function GameClient({
       />
     );
   }
-  return <LobbyView player={player} quizTitle={quizTitle} otherCount={otherPlayers.length + 1} />;
+  return (
+    <LobbyView
+      player={player}
+      players={lobbyPlayers}
+      roomCode={session.room_code}
+      quizTitle={quizTitle}
+      onSendEmoji={async (emoji) => {
+        await sendLobbyEmojiAction({
+          sessionId: session.id,
+          playerId: player.id,
+          emoji,
+        });
+      }}
+    />
+  );
 }
 
 // ─── Phase views ────────────────────────────────────────────
 
 function LobbyView({
   player,
+  players,
+  roomCode,
   quizTitle,
-  otherCount,
+  onSendEmoji,
 }: {
   player: Player;
+  players: Player[];
+  roomCode: string;
   quizTitle: string;
-  otherCount: number;
+  onSendEmoji: (emoji: (typeof LOBBY_EMOJIS)[number]) => Promise<void>;
 }) {
+  const [bursts, setBursts] = useState<Array<{ id: string; emoji: string; left: number }>>([]);
+  const burstTimers = useRef<number[]>([]);
+
+  useEffect(
+    () => () => {
+      burstTimers.current.forEach((timerId) => window.clearTimeout(timerId));
+      burstTimers.current = [];
+    },
+    [],
+  );
+
+  function triggerBurst(emoji: string) {
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const left = 14 + Math.random() * 72;
+
+    setBursts((prev) => [...prev, { id, emoji, left }]);
+
+    const timerId = window.setTimeout(() => {
+      setBursts((prev) => prev.filter((burst) => burst.id !== id));
+      burstTimers.current = burstTimers.current.filter((existing) => existing !== timerId);
+    }, 1800);
+    burstTimers.current.push(timerId);
+  }
+
   return (
-    <div className="text-center">
-      <Avatar id={player.avatar} size={92} />
-      <h1 className="font-display text-2xl font-bold mt-4 tracking-tight">
-        You're in, {player.name}!
-      </h1>
-      <p className="text-dim text-sm mt-2 mb-8">
-        Quiz: <span className="text-text">{quizTitle}</span>
-      </p>
-      <div className="border border-line rounded-2xl p-6 bg-white/[0.025]">
-        <div className="text-[11px] font-bold tracking-[0.18em] text-dim uppercase mb-2">
-          Waiting for host
+    <div className="min-h-[100svh] flex flex-col px-4 py-4 sm:px-6 sm:py-5">
+      <div className="mx-auto flex w-full max-w-[640px] flex-1 flex-col gap-4">
+        <div className="flex items-center gap-2 text-[11px] font-bold tracking-[0.24em] uppercase text-emerald-400">
+          <span className="h-2.5 w-2.5 rounded-full bg-emerald-400 shadow-[0_0_16px_rgba(52,211,153,0.55)]" />
+          Connected · waiting for host
         </div>
-        <div className="font-display font-bold text-xl">
-          {otherCount} player{otherCount === 1 ? '' : 's'} ready
+
+        <div>
+          <h1 className="font-display text-[clamp(2.4rem,8vw,4.4rem)] font-bold tracking-tight">
+            Lobby
+          </h1>
+          <p className="text-dim text-sm sm:text-base">
+            {players.length} player{players.length === 1 ? '' : 's'} in the room
+          </p>
         </div>
-        <div className="flex gap-1 mt-4 justify-center">
-          {[0, 1, 2].map((i) => (
-            <span
-              key={i}
-              className="w-2 h-2 rounded-full bg-[#A06BFF]"
-              style={{
-                animation: `bounce 1.4s ${i * 0.2}s infinite ease-in-out`,
-              }}
-            />
-          ))}
-        </div>
+
+        <section className="relative flex-1 overflow-hidden rounded-[32px] border border-white/10 bg-[radial-gradient(circle_at_top,rgba(160,107,255,0.12),transparent_42%),linear-gradient(180deg,rgba(255,255,255,0.035),rgba(255,255,255,0.015))] p-4 shadow-[0_24px_80px_rgba(0,0,0,0.32)] sm:p-6">
+          <div className="relative flex h-full min-h-[520px] flex-col gap-5">
+            <div className="pointer-events-none absolute inset-0 overflow-hidden">
+              {bursts.map((burst) => (
+                <div
+                  key={burst.id}
+                  className="absolute flex -translate-x-1/2 flex-col items-center animate-[playerReaction_1.8s_ease-out_forwards]"
+                  style={{ left: `${burst.left}%`, bottom: '20%' }}
+                >
+                  <div className="rounded-full border border-white/10 bg-black/45 px-3 py-1 text-[11px] font-semibold text-white/90 shadow-[0_12px_28px_rgba(0,0,0,0.25)] backdrop-blur-sm">
+                    {player.name}
+                  </div>
+                  <div className="mt-2 text-3xl drop-shadow-[0_8px_20px_rgba(0,0,0,0.35)]">
+                    {burst.emoji}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-[11px] font-bold tracking-[0.18em] uppercase text-dim">
+                  Waiting room
+                </div>
+                <div className="mt-1 font-display text-lg font-bold text-text">
+                  {quizTitle}
+                </div>
+              </div>
+              <div className="rounded-full border border-white/10 bg-black/25 px-3 py-1 font-mono text-[10px] font-bold tracking-[0.28em] text-dim">
+                {roomCode}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+              {players.map((p) => {
+                const isMe = p.id === player.id;
+                return (
+                  <div
+                    key={p.id}
+                    className={`rounded-[24px] border p-3 text-center shadow-[0_12px_30px_rgba(0,0,0,0.18)] ${
+                      isMe
+                        ? 'border-[#A06BFF]/60 bg-[rgba(160,107,255,0.16)]'
+                        : 'border-white/10 bg-white/[0.03]'
+                    }`}
+                  >
+                    <div className="relative mx-auto w-fit">
+                      <Avatar id={p.avatar} size={58} />
+                      {isMe && (
+                        <span className="absolute -right-2 -top-2 rounded-full border border-white/15 bg-[#A06BFF] px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.18em] text-white shadow-[0_6px_18px_rgba(160,107,255,0.4)]">
+                          You
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-3 truncate font-semibold text-text">{p.name}</div>
+                    <div className="mt-1 text-[10px] font-bold uppercase tracking-[0.16em] text-dim">
+                      {isMe ? 'Ready' : 'Joined'}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="mt-auto rounded-[24px] border border-white/10 bg-black/20 p-3 sm:p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-dim">
+                    Tap an emoji
+                  </div>
+                  <p className="mt-1 text-sm text-dim">
+                    Admins can see it float up live with your name.
+                  </p>
+                </div>
+                <div className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-dim">
+                  {players.length} here
+                </div>
+              </div>
+
+              <div className="mt-3 grid grid-cols-4 gap-2 sm:grid-cols-8">
+                {LOBBY_EMOJIS.map((emoji) => (
+                  <button
+                    key={emoji}
+                    type="button"
+                    onClick={() => {
+                      triggerBurst(emoji);
+                      void onSendEmoji(emoji);
+                    }}
+                    className="inline-flex h-11 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] text-2xl transition hover:-translate-y-0.5 hover:border-white/25 hover:bg-white/[0.08] active:translate-y-0 active:scale-[0.98]"
+                    aria-label={`Send ${emoji}`}
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <p className="pb-1 text-center text-[11px] text-dim">
+          Tap an emoji — admins can see them float up live
+        </p>
       </div>
+
       <style>{`
         @keyframes bounce {
           0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
           40% { transform: translateY(-6px); opacity: 1; }
+        }
+        @keyframes playerReaction {
+          0% { transform: translate3d(-50%, 18px, 0) scale(0.85); opacity: 0; }
+          12% { opacity: 1; }
+          100% { transform: translate3d(-50%, -108px, 0) scale(1.05); opacity: 0; }
         }
       `}</style>
     </div>

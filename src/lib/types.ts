@@ -57,6 +57,8 @@ export interface Player {
   name: string;
   avatar: string;
   score: number;
+  reaction_emoji: string | null;
+  reaction_at: string | null;
   joined_at: string;
 }
 

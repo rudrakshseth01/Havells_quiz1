@@ -1,7 +1,7 @@
 // @ts-nocheck
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getSupabaseBrowser } from '@/lib/supabase/client';
 import { Avatar } from '@/components/ui/Avatar';
@@ -42,6 +42,10 @@ export function LiveConsole({
   const [players, setPlayers] = useState<Player[]>([]);
   const [answers, setAnswers] = useState<Answer[]>([]);
   const [qrSrc, setQrSrc] = useState<string | null>(null);
+  const [reactionBursts, setReactionBursts] = useState<
+    Array<{ id: string; emoji: string; playerName: string; left: number; bottom: number }>
+  >([]);
+  const reactionTimers = useRef<number[]>([]);
 
   const current = questions[qIdx] ?? null;
 
@@ -49,6 +53,37 @@ export function LiveConsole({
   useEffect(() => {
     QRCode.toDataURL(joinUrl, { width: 240, margin: 1 }).then(setQrSrc).catch(() => {});
   }, [joinUrl]);
+
+  useEffect(
+    () => () => {
+      reactionTimers.current.forEach((id) => window.clearTimeout(id));
+      reactionTimers.current = [];
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (phase !== 'lobby') setReactionBursts([]);
+  }, [phase]);
+
+  function pushReaction(player: Player) {
+    if (!player.reaction_emoji) return;
+
+    const id = `${player.id}:${player.reaction_at ?? Date.now()}:${Math.random().toString(36).slice(2, 7)}`;
+    const left = 10 + Math.random() * 78;
+    const bottom = 12 + Math.random() * 18;
+
+    setReactionBursts((prev) => [
+      ...prev,
+      { id, emoji: player.reaction_emoji, playerName: player.name, left, bottom },
+    ]);
+
+    const timerId = window.setTimeout(() => {
+      setReactionBursts((prev) => prev.filter((burst) => burst.id !== id));
+      reactionTimers.current = reactionTimers.current.filter((existing) => existing !== timerId);
+    }, 2000);
+    reactionTimers.current.push(timerId);
+  }
 
   // ── Realtime: players + answers + session
   useEffect(() => {
@@ -81,9 +116,12 @@ export function LiveConsole({
           if (payload.eventType === 'INSERT') {
             setPlayers((p) => [...p, payload.new as Player]);
           } else if (payload.eventType === 'UPDATE') {
-            setPlayers((p) =>
-              p.map((x) => (x.id === (payload.new as Player).id ? (payload.new as Player) : x)),
-            );
+            const next = payload.new as Player;
+            const prev = payload.old as Player;
+            if (next.reaction_emoji && next.reaction_at !== prev?.reaction_at && phase === 'lobby') {
+              pushReaction(next);
+            }
+            setPlayers((p) => p.map((x) => (x.id === next.id ? next : x)));
           } else if (payload.eventType === 'DELETE') {
             setPlayers((p) => p.filter((x) => x.id !== (payload.old as Player).id));
           }
@@ -208,16 +246,35 @@ export function LiveConsole({
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6">
         <section className="border border-line rounded-2xl p-6 bg-white/[0.025] min-h-[420px]">
           {phase === 'lobby' && (
-            <LobbyView qrSrc={qrSrc} joinUrl={joinUrl} code={session.room_code}>
-              <Button
-                size="lg"
-                disabled={players.length === 0}
-                onClick={() => startQuestion(0)}
-              >
-                Start with {players.length} player
-                {players.length === 1 ? '' : 's'} →
-              </Button>
-            </LobbyView>
+            <div className="relative">
+              <LobbyView qrSrc={qrSrc} joinUrl={joinUrl} code={session.room_code}>
+                <Button
+                  size="lg"
+                  disabled={players.length === 0}
+                  onClick={() => startQuestion(0)}
+                >
+                  Start with {players.length} player
+                  {players.length === 1 ? '' : 's'} →
+                </Button>
+              </LobbyView>
+
+              <div className="pointer-events-none absolute inset-0 overflow-hidden">
+                {reactionBursts.map((burst) => (
+                  <div
+                    key={burst.id}
+                    className="absolute flex -translate-x-1/2 flex-col items-center animate-[floatReaction_2s_ease-out_forwards]"
+                    style={{ left: `${burst.left}%`, bottom: `${burst.bottom}%` }}
+                  >
+                    <div className="rounded-full border border-white/10 bg-black/45 px-3 py-1 text-[11px] font-semibold text-white/90 shadow-[0_12px_28px_rgba(0,0,0,0.25)] backdrop-blur-sm">
+                      {burst.playerName}
+                    </div>
+                    <div className="mt-2 text-3xl drop-shadow-[0_8px_20px_rgba(0,0,0,0.35)]">
+                      {burst.emoji}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
           {phase === 'question' && current && (
             <QuestionView
@@ -277,6 +334,14 @@ export function LiveConsole({
           </div>
         </aside>
       </div>
+
+      <style>{`
+        @keyframes floatReaction {
+          0% { transform: translate3d(-50%, 16px, 0) scale(0.85); opacity: 0; }
+          12% { opacity: 1; }
+          100% { transform: translate3d(-50%, -110px, 0) scale(1.05); opacity: 0; }
+        }
+      `}</style>
     </main>
   );
 }

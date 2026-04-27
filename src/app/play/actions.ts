@@ -2,6 +2,7 @@
 
 import { redirect } from 'next/navigation';
 import { getSupabaseServer } from '@/lib/supabase/server';
+import { LOBBY_EMOJIS, type LobbyEmoji } from '@/lib/reactions';
 
 export interface JoinResult {
   ok: boolean;
@@ -74,6 +75,42 @@ export async function submitAnswerAction(input: {
     return { ok: false };
   }
   return { ok: true };
+}
+
+export async function sendLobbyEmojiAction(input: {
+  sessionId: string;
+  playerId: string;
+  emoji: LobbyEmoji;
+}): Promise<{ ok: boolean }> {
+  if (!LOBBY_EMOJIS.includes(input.emoji)) return { ok: false };
+
+  const supabase = getSupabaseServer();
+
+  const { data: session } = await supabase
+    .from('game_sessions')
+    .select('id, phase')
+    .eq('id', input.sessionId)
+    .maybeSingle();
+  if (!session || session.phase !== 'lobby') return { ok: false };
+
+  const { data: player } = await supabase
+    .from('players')
+    .select('id')
+    .eq('id', input.playerId)
+    .eq('session_id', input.sessionId)
+    .maybeSingle();
+  if (!player) return { ok: false };
+
+  const { error } = await supabase
+    .from('players')
+    .update({
+      reaction_emoji: input.emoji,
+      reaction_at: new Date().toISOString(),
+    })
+    .eq('id', input.playerId)
+    .eq('session_id', input.sessionId);
+
+  return { ok: !error };
 }
 
 // Returns is_correct/points only when the session has revealed the question.

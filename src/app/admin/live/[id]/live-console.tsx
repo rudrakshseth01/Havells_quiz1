@@ -193,6 +193,15 @@ export function LiveConsole({
     return () => clearTimeout(t);
   }, [phase, session.id]);
 
+  // Auto-advance the leaderboard after a short viewing window.
+  useEffect(() => {
+    if (phase !== 'leaderboard') return;
+    const t = setTimeout(() => {
+      nextQuestion().catch(() => {});
+    }, 6000);
+    return () => clearTimeout(t);
+  }, [phase, qIdx, questions.length, session.id]);
+
   async function startQuestion(idx: number) {
     setQuestionStartedAt(Date.now());
     await setSessionPhaseAction(session.id, 'question', idx);
@@ -518,34 +527,13 @@ function LeaderboardView({
   onNext: () => void;
 }) {
   return (
-    <div>
-      <div className="text-[11px] font-bold tracking-[0.14em] text-dim uppercase mb-2">
-        Leaderboard
-      </div>
-      <h2 className="font-display text-3xl font-bold mb-6 tracking-tight">
-        Standings
-      </h2>
-      <div className="space-y-2 mb-8">
-        {players.slice(0, 8).map((p, i) => (
-          <div
-            key={p.id}
-            className="flex items-center gap-3 px-4 py-3 rounded-xl bg-white/[0.03] border border-line"
-          >
-            <span className="w-6 text-center font-display font-bold text-lg text-dim">
-              {i + 1}
-            </span>
-            <Avatar id={p.avatar} size={36} />
-            <span className="flex-1 font-medium">{p.name}</span>
-            <span className="font-mono font-bold text-lg">{p.score}</span>
-          </div>
-        ))}
-      </div>
-      <div className="flex justify-end">
-        <Button onClick={onNext}>
-          {isLast ? 'Show final results →' : 'Next question →'}
-        </Button>
-      </div>
-    </div>
+    <ResultsBoard
+      players={players}
+      eyebrow="Round results"
+      title="Leaderboard"
+      actionLabel={isLast ? 'Show final results →' : 'Next question →'}
+      onAction={onNext}
+    />
   );
 }
 
@@ -556,50 +544,124 @@ function FinalView({
   players: Player[];
   onClose: () => void;
 }) {
-  const top3 = players.slice(0, 3);
   return (
-    <div className="text-center">
-      <div className="text-[11px] font-bold tracking-[0.14em] text-dim uppercase mb-3">
-        Final results
+    <ResultsBoard
+      players={players}
+      eyebrow="Final results"
+      title="🎉 That's a wrap!"
+      actionLabel="Save & view full report"
+      onAction={onClose}
+      final
+    />
+  );
+}
+
+function ResultsBoard({
+  players,
+  eyebrow,
+  title,
+  actionLabel,
+  onAction,
+  final = false,
+}: {
+  players: Player[];
+  eyebrow: string;
+  title: string;
+  actionLabel: string;
+  onAction: () => void;
+  final?: boolean;
+}) {
+  const top3 = players.slice(0, 3);
+  const podium = [top3[1], top3[0], top3[2]].filter(Boolean) as Player[];
+  const rankById = new Map(players.map((p, i) => [p.id, i + 1]));
+  const rest = players.slice(3);
+
+  return (
+    <div className={final ? 'text-center py-3' : 'py-3'}>
+      <div className="text-center mb-4">
+        <div className="text-[11px] font-bold tracking-[0.18em] text-[#8D7DFF] uppercase">
+          {eyebrow}
+        </div>
+        <h2 className="font-display text-4xl font-bold tracking-tight mt-1">{title}</h2>
       </div>
-      <h2 className="font-display text-4xl font-bold mb-8 tracking-tight">
-        🎉 That's a wrap!
-      </h2>
-      <div className="grid grid-cols-3 gap-4 max-w-md mx-auto mb-10">
-        {top3.map((p, i) => {
-          const heights = ['h-32', 'h-44', 'h-24'];
-          const orders = ['order-1', 'order-2', 'order-3'];
-          // 1st in middle, 2nd left, 3rd right
-          const visualOrder = [1, 0, 2];
-          const place = i + 1;
-          return (
-            <div
-              key={p.id}
-              className={`flex flex-col items-center justify-end ${orders[visualOrder[i]]}`}
-            >
-              <Avatar id={p.avatar} size={56} />
-              <div className="font-bold mt-2">{p.name}</div>
-              <div className="font-mono text-[#5BD0FF] mb-2">{p.score}</div>
-              <div
-                className={`w-full ${i === 0 ? 'h-44' : i === 1 ? 'h-32' : 'h-24'} rounded-t-xl flex items-center justify-center font-display font-bold text-2xl`}
-                style={{
-                  background:
-                    i === 0
-                      ? 'linear-gradient(180deg,#FFD259,rgba(255,210,89,0.3))'
-                      : i === 1
-                        ? 'linear-gradient(180deg,#A4A8B8,rgba(164,168,184,0.3))'
-                        : 'linear-gradient(180deg,#C77B58,rgba(199,123,88,0.3))',
-                }}
-              >
-                {place}
+
+      {podium.length > 0 && (
+        <div className="grid grid-cols-3 gap-2 items-end mb-4">
+          {podium.map((p) => {
+            const pRank = rankById.get(p.id) ?? 0;
+            const isMe = false;
+            const pedestalHeight = pRank === 1 ? 'h-24' : pRank === 2 ? 'h-20' : 'h-16';
+            const glow =
+              pRank === 1
+                ? 'shadow-[0_0_24px_rgba(255,180,90,0.35)] border-[#FFAE4D]/60'
+                : pRank === 2
+                  ? 'shadow-[0_0_20px_rgba(140,120,255,0.35)] border-[#8B7BFF]/50'
+                  : 'shadow-[0_0_20px_rgba(255,95,150,0.35)] border-[#FF5C9A]/50';
+            const pedestalBg =
+              pRank === 1
+                ? 'bg-[linear-gradient(180deg,rgba(255,215,90,0.55),rgba(255,163,0,0.08))]'
+                : pRank === 2
+                  ? 'bg-[linear-gradient(180deg,rgba(214,218,238,0.45),rgba(112,121,160,0.08))]'
+                  : 'bg-[linear-gradient(180deg,rgba(201,137,84,0.45),rgba(109,68,38,0.08))]';
+
+            return (
+              <div key={p.id} className="text-center">
+                <div className="relative inline-flex">
+                  {isMe && (
+                    <span className="absolute -top-6 left-1/2 -translate-x-1/2 text-[10px] font-bold tracking-[0.14em] text-[#7CE2A9] uppercase">
+                      You
+                    </span>
+                  )}
+                  <div className={`rounded-2xl border ${glow} p-1 bg-[#121521]`}>
+                    <Avatar id={p.avatar} size={56} />
+                  </div>
+                </div>
+                <div className="mt-2 font-bold truncate px-1">{p.name}</div>
+                <div className="font-mono text-[#5BD0FF] mb-2">{p.score}</div>
+                <div className={`w-full ${pedestalHeight} rounded-t-xl flex items-center justify-center font-display font-bold text-2xl border border-white/10 ${pedestalBg}`}>
+                  {pRank}
+                </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
+      )}
+
+      {rest.length > 0 ? (
+        <div className="space-y-2 max-h-[36vh] overflow-y-auto pr-1 text-left">
+          {rest.map((p) => {
+            const pRank = rankById.get(p.id) ?? 0;
+            const isMe = false;
+            return (
+              <div
+                key={p.id}
+                className={`rounded-2xl border px-3 py-2.5 flex items-center gap-3 ${
+                  isMe
+                    ? 'border-[#5BD0FF]/60 bg-[rgba(91,208,255,0.10)] shadow-[0_0_0_1px_rgba(91,208,255,0.2)]'
+                    : 'border-line bg-white/[0.02]'
+                }`}
+              >
+                <div className="w-5 text-center font-mono text-sm text-dim">{pRank}</div>
+                <Avatar id={p.avatar} size={30} />
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-semibold truncate">{p.name}</div>
+                </div>
+                <div className="font-mono font-bold text-sm">{p.score}</div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-line bg-white/[0.02] p-4 text-center text-dim text-sm">
+          Waiting for more players on the board.
+        </div>
+      )}
+
+      <div className="mt-4 flex justify-end">
+        <Button onClick={onAction} size={final ? 'lg' : 'md'}>
+          {actionLabel}
+        </Button>
       </div>
-      <Button size="lg" onClick={onClose}>
-        Save & view full report
-      </Button>
     </div>
   );
 }
